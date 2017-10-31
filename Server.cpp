@@ -4,13 +4,14 @@
 #include <unistd.h>
 #include <iostream>
 #include <map>
+#include <functional>
 
 #include "Request.cpp"
 
 class Server {
     int sock0;
     sockaddr_in addr;
-    // map<string, >
+    std::map<std::string, std::function<void(Request*)>> _route;
 public:
     Server() {
         sock0 = socket(AF_INET, SOCK_STREAM,0);
@@ -28,8 +29,8 @@ public:
         return ntohs(addr.sin_port);
     }
 
-    void setPath(std::string path) {
-
+    void route(std::string path, std::function<void(Request*)> func) {
+        _route[path] = func;
     }
 
     void start() {
@@ -53,12 +54,29 @@ public:
             std::cout << ip << "\n";
 
             Request* request = new Request(buf);
-            std::cout << (*request).getMethod() << std::endl;
+            if (_route.count(request->getPath()) == 1) {
+                std::function<void(Request*)> func = _route[request->getPath()];
+                func(request);
+                send_msg(sock, (char*)"HTTP/1.1 200 OK\r\n");
+            } else {
+                std::cout << "404\n";
+                send_msg(sock, (char*)"HTTP/1.1 404 Not Found\r\n");
+            }
+            send_msg(sock, (char*)"Content-Length: 0\r\n");
+            send_msg(sock, (char*)"Content-Type: text/html\r\n");
+            send_msg(sock, (char*)"Connection: Close\r\n");
+            send_msg(sock, (char*)"\r\n");
 
+            delete request;
             close(sock);
         }
 
         close(sock0);
-    } 
+    }
+
+    void send_msg(int sock, char* message) {
+        int len = strlen(message);
+        write(sock, message, len);
+    }
 };
 
